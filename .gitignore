@@ -7,3 +7,4 @@ sidecar/.venv
 
 /target
 .atl/
+__pycache__/
