@@ -205,7 +205,11 @@ fn main() -> anyhow::Result<()> {
                     match result {
                         Ok(info) => {
                             app.set_result_path(out.display().to_string().into());
-                            app.set_status(format!("generated in {:.1}s", info.elapsed_s).into());
+                            let rate = info
+                                .sample_rate
+                                .map(|r| r.to_string())
+                                .unwrap_or_else(|| "?".into());
+                            app.set_status(format!("generated in {:.1}s at {rate} Hz", info.elapsed_s).into());
                         }
                         Err(e) => app.set_status(format!("generate error: {e}").into()),
                     }

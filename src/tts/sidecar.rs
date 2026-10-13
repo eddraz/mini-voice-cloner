@@ -25,6 +25,8 @@ use serde_json::json;
 #[derive(Debug, Clone)]
 pub enum GenerateTarget {
     Reference(PathBuf),
+    /// Built-in speaker; used by tests and the smoke path.
+    #[allow(dead_code)]
     Voice(String),
 }
 
@@ -33,6 +35,9 @@ pub enum GenerateTarget {
 pub struct GenerateInfo {
     pub elapsed_s: f64,
     pub sample_rate: Option<u32>,
+    /// Reported for protocol completeness; the UI currently surfaces only
+    /// elapsed time and rate.
+    #[allow(dead_code)]
     pub samples: Option<u64>,
 }
 
