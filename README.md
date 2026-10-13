@@ -47,9 +47,23 @@ cargo test                      # unit tests (no model needed; mock sidecar)
 First run downloads the KittenTTS 2 weights (~506 MiB, `weights="emb4"`) into
 the HuggingFace cache and takes a while; later starts load from disk.
 
+## Recording workflow
+
+1. Read the on-screen script aloud while recording (the pane is editable —
+   paste your own text for longer sessions). Recordings auto-stop at 15:00
+   (`m:ss` counter) and are saved to `recordings/ref-<timestamp>.wav`.
+2. Long recordings are safe to generate from: KittenTTS embeds the whole
+   reference as prompt tokens with no internal truncation (see
+   `build_reference_prefix`), so the sidecar passes only the first 30 s to
+   the model (`KITTEN_REFERENCE_MAX_S` overrides the window). The full
+   recording file is never modified.
+
 ## Status
 
 - WAV helpers, sidecar client, import: unit-tested (RED→GREEN).
+- Reading-script pane + 15-min recording cap: implemented; elapsed + cap
+  logic covered by `format_elapsed` test; sidecar reference windowing
+  covered by `sidecar/test_reference.py` (REFERENCE TESTS OK).
 - Sidecar smoke: generated 24 kHz clip with a built-in voice on CPU.
 - Mic capture + playback: code ready behind `--features audio`, pending ALSA
   headers on the dev machine.

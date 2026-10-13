@@ -13,6 +13,10 @@ S3. User answer: "Ambos" — the app records from the microphone AND imports aud
 
 S4. User answer: "Incluir KittenTTS ya" — this iteration already includes inference: a generate action clones the reference voice for the entered text and the result is playable in the app.
 
+S5. User: "agrega un texto de prueba para poder leer al grabar la voz" — the recording view shows a reading script to read aloud while recording.
+
+S6. User: "el audio deberia poder durar 15 mins para que funcione correctamente" — recordings can last up to 15 minutes (auto-stop at 15:00; the full WAV is kept on disk). Evidence: kittenml `build_reference_prefix` embeds all reference codec tokens into the prompt with no truncation (~75 tokens/s → a 15-min clip would break generation), so only a bounded window (30 s, KittenTTS's documented maximum) is passed to the model while the full recording stays on disk.
+
 Environment constraints: Debian 13 (trixie), Wayland, CPU-only (8 cores, ~6 GB free RAM), ffmpeg present, no passwordless sudo. `libasound2-dev` is required for cpal (capture + playback).
 
 ## Tasks
@@ -27,6 +31,10 @@ Environment constraints: Debian 13 (trixie), Wayland, CPU-only (8 cores, ~6 GB f
 - T8 (S2,S4): Wire UI actions (record/import/play/generate/status) to backend. Route: inline. Commit: 6a33070.
 - T9 (all): cargo build + cargo test + app launch smoke. Route: inline.
 - T10 (S1,S4): uv sync sidecar, kitten-tts-2 weights=emb4, generate smoke with built-in voice. Route: inline. Commit: 3b10bd8 (smoke.py).
+- T11 (S5): Reading-script pane in the recording view (TextEdit, default Spanish passage, editable for custom scripts). Route: inline. Commit: feat(ui).
+- T12 (S6): 15-minute recording support: m:ss elapsed (test-first) + auto-stop cap at 15:00. Route: inline. Commit: feat(ui).
+- T13 (S6): Sidecar reference windowing: `prepare_reference` trims to 30 s before model.generate (full WAV untouched); test-first. Route: inline. Commit: feat(sidecar).
+- T14 (all): cargo test + launch smoke + docs/memory. Route: inline.
 
 ## Log
 
@@ -39,3 +47,5 @@ L6. Verification evidence: cargo test RED (8 todo!() failures) → implementatio
 L7. Sidecar smoke (T10): SMOKE OK — model kitten-tts-2 (emb4) loaded, generated 102240 samples (4.26 s) at 24 kHz with built-in voice Bruno; elapsed 50 s includes first-download + torch warmup on CPU.
 L8. cpal/rodio kept behind `audio` feature (default off) so the shell builds/tests without ALSA headers; flip to default once T5/T6 verify.
 L9. Launch smoke (T9): `cargo run` alive 35 s on Wayland, no panics; sidecar spawned via uv; cargo test 10/10 after warning cleanup (sample rate surfaced in generate status; test-only elements annotated). README added.
+L10. User: "agrega un texto de prueba para poder leer al grabar la voz, el audio deberia poder durar 15 mins para que funcione correctamente" → S5, S6 added; T11-T14 opened. Evidence for the 30 s model window: prompt.py build_reference_prefix (no truncation, all codec tokens in prompt); KittenTTS README ("Give it 5-30 seconds").
+L11. Verification: format_elapsed RED→GREEN (cargo test 11/11 incl. TextEdit UI compile); sidecar/test_reference.py RED (ImportError) → REFERENCE TESTS OK (60 s clip trimmed to 30 s temp copy, original untouched; 10 s clip passes through).
