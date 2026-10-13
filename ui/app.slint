@@ -1,4 +1,4 @@
-import { Button, LineEdit, HorizontalBox, VerticalBox } from "std-widgets.slint";
+import { Button, LineEdit, TextEdit, HorizontalBox, VerticalBox } from "std-widgets.slint";
 
 export component AppWindow inherits Window {
     title: "Voice Clone Lab";
@@ -14,6 +14,7 @@ export component AppWindow inherits Window {
     in property <string> status;
     in property <string> result-path;
     in-out property <string> text-to-speak;
+    in-out property <string> reading-script;
 
     callback start-recording();
     callback stop-recording();
@@ -43,6 +44,23 @@ export component AppWindow inherits Window {
                 text: root.recording ? root.elapsed : "";
                 vertical-alignment: center;
                 color: #9a9aa2;
+            }
+        }
+
+        VerticalBox {
+            spacing: 4px;
+            Text {
+                text: root.recording
+                    ? "● Recording — read this aloud:"
+                    : "Reading script (edit or paste your own):";
+                horizontal-alignment: left;
+                font-size: 12px;
+                color: root.recording ? #d86d6d : #9a9aa2;
+            }
+            TextEdit {
+                text <=> root.reading-script;
+                min-height: 110px;
+                font-size: 14px;
             }
         }
 
