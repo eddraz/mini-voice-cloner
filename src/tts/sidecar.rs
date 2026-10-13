@@ -140,22 +140,7 @@ impl SidecarHandle {
     ) -> Result<GenerateInfo> {
         self.ensure_ready(timeout)?;
         let id = self.0.next_id.fetch_add(1, Ordering::SeqCst);
-        let request = match &target {
-            GenerateTarget::Reference(p) => json!({
-                "id": id,
-                "cmd": "generate",
-                "text": text,
-                "reference": p.display().to_string(),
-                "out": out.display().to_string(),
-            }),
-            GenerateTarget::Voice(v) => json!({
-                "id": id,
-                "cmd": "generate",
-                "text": text,
-                "voice": v,
-                "out": out.display().to_string(),
-            }),
-        };
+        let request = build_generate_request(id, text, &target, out);
         let (tx, rx) = mpsc::channel();
         self.0
             .pending
@@ -248,6 +233,37 @@ fn fail_all_pending(inner: &Arc<Inner>, message: &str) {
     let mut pending = inner.pending.lock().unwrap_or_else(|e| e.into_inner());
     for (_, sender) in pending.drain() {
         let _ = sender.send(Err(anyhow!(message.to_string())));
+    }
+}
+
+/// Build the generate request JSON, resolving `reference` and `out` to
+/// absolute paths: the sidecar runs with its own working directory, so
+/// relative paths would resolve against the wrong location.
+fn build_generate_request(
+    id: u64,
+    text: &str,
+    target: &GenerateTarget,
+    out: &Path,
+) -> serde_json::Value {
+    let out_abs = std::path::absolute(out).expect("current directory is valid");
+    match target {
+        GenerateTarget::Reference(p) => {
+            let reference_abs = std::path::absolute(p).expect("current directory is valid");
+            json!({
+                "id": id,
+                "cmd": "generate",
+                "text": text,
+                "reference": reference_abs.display().to_string(),
+                "out": out_abs.display().to_string(),
+            })
+        }
+        GenerateTarget::Voice(v) => json!({
+            "id": id,
+            "cmd": "generate",
+            "text": text,
+            "voice": v,
+            "out": out_abs.display().to_string(),
+        }),
     }
 }
 
@@ -409,5 +425,31 @@ mod tests {
             )
             .unwrap_err();
         assert!(err.to_string().contains("timed out"), "error was: {err:#}");
+    }
+
+    #[test]
+    fn request_paths_are_made_absolute() {
+        let req = build_generate_request(
+            7,
+            "hola",
+            &GenerateTarget::Reference(PathBuf::from("recordings/ref.wav")),
+            Path::new("recordings/out.wav"),
+        );
+        let reference = req.get("reference").and_then(|v| v.as_str()).unwrap();
+        let out = req.get("out").and_then(|v| v.as_str()).unwrap();
+        assert!(Path::new(reference).is_absolute(), "reference: {reference}");
+        assert!(Path::new(out).is_absolute(), "out: {out}");
+        assert!(reference.ends_with("recordings/ref.wav"), "reference: {reference}");
+        assert!(out.ends_with("recordings/out.wav"), "out: {out}");
+
+        let req = build_generate_request(
+            8,
+            "hola",
+            &GenerateTarget::Voice("Bruno".into()),
+            Path::new("recordings/out2.wav"),
+        );
+        assert!(req.get("reference").is_none(), "voice target must not send reference");
+        let out = req.get("out").and_then(|v| v.as_str()).unwrap();
+        assert!(Path::new(out).is_absolute(), "out: {out}");
     }
 }
