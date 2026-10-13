@@ -1,0 +1,86 @@
+import { Button, LineEdit, HorizontalBox, VerticalBox } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    title: "Voice Clone Lab";
+    preferred-width: 780px;
+    preferred-height: 540px;
+    background: #1e1f24;
+
+    in property <bool> recording;
+    in property <string> elapsed;
+    in property <string> reference-path;
+    in property <string> model-status;
+    in property <bool> busy;
+    in property <string> status;
+    in property <string> result-path;
+    in-out property <string> text-to-speak;
+
+    callback start-recording();
+    callback stop-recording();
+    callback import-audio();
+    callback play-reference();
+    callback generate();
+    callback play-result();
+
+    VerticalBox {
+        padding: 16px;
+        spacing: 12px;
+
+        Text {
+            text: root.model-status;
+            horizontal-alignment: left;
+            color: root.model-status == "model ready" ? #6dd88a
+                : root.model-status == "loading model…" ? #d8c46d
+                : #d86d6d;
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            alignment: start;
+            Button { enabled: !root.recording; text: "● Record"; clicked => root.start-recording(); }
+            Button { enabled: root.recording; text: "■ Stop"; clicked => root.stop-recording(); }
+            Text {
+                text: root.recording ? root.elapsed : "";
+                vertical-alignment: center;
+                color: #9a9aa2;
+            }
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            alignment: start;
+            Button { text: "Import audio…"; enabled: !root.busy; clicked => root.import-audio(); }
+            Text {
+                text: root.reference-path == "" ? "no reference selected" : root.reference-path;
+                overflow: elide;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                color: #9a9aa2;
+            }
+            Button { text: "▶"; enabled: root.reference-path != ""; clicked => root.play-reference(); }
+        }
+
+        LineEdit {
+            text <=> root.text-to-speak;
+            placeholder-text: "Text to speak with the cloned voice…";
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            alignment: start;
+            Button {
+                text: root.busy ? "Generating…" : "Generate";
+                enabled: !root.busy && !root.recording && root.reference-path != "" && root.text-to-speak != "";
+                clicked => root.generate();
+            }
+            Button { text: "▶ Result"; enabled: root.result-path != ""; clicked => root.play-result(); }
+        }
+
+        Text {
+            text: root.status;
+            horizontal-alignment: left;
+            color: #9a9aa2;
+            font-size: 12px;
+        }
+    }
+}

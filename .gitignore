@@ -1,0 +1,9 @@
+target/
+recordings/
+sidecar/.venv
+
+
+# Added by cargo
+
+/target
+.atl/

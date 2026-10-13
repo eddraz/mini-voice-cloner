@@ -1,0 +1,21 @@
+[package]
+name = "voice_clone_desktop"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+cpal = { version = "0.18.2", optional = true }
+hound = "3.5.1"
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
+rodio = { version = "0.23.0", optional = true }
+serde = "1.0.229"
+serde_json = "1.0.154"
+slint = "1.18.1"
+
+[build-dependencies]
+slint-build = "1.18.1"
+
+[features]
+default = []
+audio = ["dep:cpal", "dep:rodio"]
