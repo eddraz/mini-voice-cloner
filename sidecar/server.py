@@ -17,16 +17,43 @@ Messages (one JSON object per line):
 import json
 import os
 import sys
+import tempfile
 import threading
 import time
 
 emit_lock = threading.Lock()
 state = {"model": None, "error": None}
 
+# KittenTTS embeds the whole reference clip as prompt tokens (see
+# build_reference_prefix in prompt.py) with no internal truncation, so long
+# recordings are trimmed to this window before reaching the model. The full
+# recording always stays on disk; override with KITTEN_REFERENCE_MAX_S.
+MAX_REFERENCE_S = float(os.environ.get("KITTEN_REFERENCE_MAX_S", "30"))
+
 
 def emit(obj):
     with emit_lock:
         print(json.dumps(obj), flush=True)
+
+
+def prepare_reference(path, max_s=MAX_REFERENCE_S):
+    """Return (path_to_use, used_s, total_s) for a reference recording.
+
+    Clips longer than the model window (max_s) are trimmed to their first
+    max_s seconds into a temp WAV copy; the original file is never modified.
+    """
+    import soundfile as sf
+
+    info = sf.info(path)
+    total_s = info.frames / info.samplerate
+    if total_s <= max_s:
+        return path, total_s, total_s
+    frames = int(max_s * info.samplerate)
+    data, sr = sf.read(path, frames=frames)
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp.close()
+    sf.write(tmp.name, data, sr)
+    return tmp.name, frames / sr, total_s
 
 
 def load_model():
@@ -61,20 +88,35 @@ def handle(req):
             reference = req.get("reference")
             voice = req.get("voice", "Bruno")
             start = time.time()
-            if reference:
-                audio = model.generate(text, reference=reference)
-            else:
-                audio = model.generate(text, voice=voice)
-            import soundfile as sf
+            trimmed_temp = None
+            ref_used_s = None
+            ref_total_s = None
+            try:
+                if reference:
+                    ref_path, ref_used_s, ref_total_s = prepare_reference(reference)
+                    if ref_path != reference:
+                        trimmed_temp = ref_path
+                    audio = model.generate(text, reference=ref_path)
+                else:
+                    audio = model.generate(text, voice=voice)
+                import soundfile as sf
 
-            sf.write(out, audio, model.sample_rate)
-            emit({
-                "id": rid,
-                "ok": True,
-                "elapsed_s": round(time.time() - start, 2),
-                "sample_rate": model.sample_rate,
-                "samples": int(len(audio)),
-            })
+                sf.write(out, audio, model.sample_rate)
+                emit({
+                    "id": rid,
+                    "ok": True,
+                    "elapsed_s": round(time.time() - start, 2),
+                    "sample_rate": model.sample_rate,
+                    "samples": int(len(audio)),
+                    "reference_used_s": round(ref_used_s, 1) if ref_used_s else None,
+                    "reference_total_s": round(ref_total_s, 1) if ref_total_s else None,
+                })
+            finally:
+                if trimmed_temp:
+                    try:
+                        os.unlink(trimmed_temp)
+                    except OSError:
+                        pass
         else:
             emit({"id": rid, "ok": False, "error": f"unknown cmd {cmd!r}"})
     except Exception as exc:  # noqa: BLE001 - surfaced to the host verbatim
