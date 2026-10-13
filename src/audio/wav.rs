@@ -3,6 +3,8 @@ use std::path::Path;
 use anyhow::{Context, Result};
 
 /// Mix `channels` interleaved channels down to mono by averaging each frame.
+/// Called by the capture stream (feature `audio`) and by tests.
+#[cfg_attr(not(feature = "audio"), allow(dead_code))]
 pub fn downmix_to_mono(samples: &[f32], channels: usize) -> Vec<f32> {
     assert!(channels >= 1, "channels must be >= 1");
     if channels == 1 {
@@ -16,6 +18,8 @@ pub fn downmix_to_mono(samples: &[f32], channels: usize) -> Vec<f32> {
 
 /// Write mono `f32` samples (expected in -1.0..=1.0) as 16-bit PCM WAV at
 /// `sample_rate`. Values outside -1.0..=1.0 are clamped.
+/// Called by capture stop (feature `audio`) and by tests.
+#[cfg_attr(not(feature = "audio"), allow(dead_code))]
 pub fn write_wav_i16_mono(path: &Path, samples: &[f32], sample_rate: u32) -> Result<()> {
     let spec = hound::WavSpec {
         channels: 1,
