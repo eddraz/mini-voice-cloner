@@ -39,10 +39,12 @@ sidecar emits a `ready` event, then id-matched `ok/error` responses.
 
 ```bash
 uv sync --directory sidecar     # once: installs kittenml + torch (~2 GB)
-cargo run                       # app shell; audio feature off until ALSA headers exist
-cargo run --features audio      # full app: mic capture + playback
+cargo run                       # full app: mic capture + playback (audio is a default feature)
 cargo test                      # unit tests (no model needed; mock sidecar)
 ```
+
+Headless environments can build with `cargo run --no-default-features` (record
+and play buttons will report the missing feature instead).
 
 First run downloads the KittenTTS 2 weights (~506 MiB, `weights="emb4"`) into
 the HuggingFace cache and takes a while; later starts load from disk.
@@ -65,5 +67,6 @@ the HuggingFace cache and takes a while; later starts load from disk.
   logic covered by `format_elapsed` test; sidecar reference windowing
   covered by `sidecar/test_reference.py` (REFERENCE TESTS OK).
 - Sidecar smoke: generated 24 kHz clip with a built-in voice on CPU.
-- Mic capture + playback: code ready behind `--features audio`, pending ALSA
-  headers on the dev machine.
+- Mic capture + playback: verified — ALSA headers installed, `audio` default;
+  cpal 0.18 / rodio 0.23 API fixes applied, app launches with the default mic
+  detected. Interactive record/clone test pending a real reading.

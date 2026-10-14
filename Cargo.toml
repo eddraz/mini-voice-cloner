@@ -17,5 +17,5 @@ slint = "1.18.1"
 slint-build = "1.18.1"
 
 [features]
-default = []
+default = ["audio"]
 audio = ["dep:cpal", "dep:rodio"]

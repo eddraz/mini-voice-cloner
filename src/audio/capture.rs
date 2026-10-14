@@ -38,7 +38,8 @@ impl Recorder {
     }
 
     pub fn sample_rate(&self) -> u32 {
-        self.config.sample_rate().0
+        // cpal 0.18: SampleRate is a plain u32 alias.
+        self.config.sample_rate()
     }
 
     /// Start capturing. Previous buffer contents are discarded.
@@ -91,7 +92,7 @@ impl Recorder {
         &self,
         buffer: Arc<Mutex<Vec<f32>>>,
         channels: usize,
-        err_fn: impl FnMut(cpal::StreamError) + Send + 'static,
+        err_fn: impl FnMut(cpal::Error) + Send + 'static,
     ) -> Result<cpal::Stream>
     where
         T: cpal::SizedSample,
@@ -100,16 +101,18 @@ impl Recorder {
         let config: cpal::StreamConfig = self.config.clone().into();
         self.device
             .build_input_stream(
-                &config,
+                config,
                 move |data: &[T], _: &cpal::InputCallbackInfo| {
                     let mut buf = buffer.lock().expect("capture buffer poisoned");
                     for frame in data.chunks(channels) {
                         if frame.is_empty() {
                             continue;
                         }
+                        // cpal 0.18 wraps dasp_sample, whose conversion method
+                        // is `from_sample_` (trailing underscore).
                         let mono = frame
                             .iter()
-                            .map(|s| f32::from_sample(*s))
+                            .map(|s| f32::from_sample_(*s))
                             .sum::<f32>()
                             / frame.len() as f32;
                         buf.push(mono);
