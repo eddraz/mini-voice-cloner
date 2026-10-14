@@ -99,6 +99,9 @@ error. The bundled torch is a CUDA 13 build, so no reinstall is needed.
   logic covered by `format_elapsed` test; sidecar reference windowing
   covered by `sidecar/test_reference.py` (REFERENCE TESTS OK).
 - Sidecar smoke: generated 24 kHz clip with a built-in voice on CPU.
+- Playback: single persistent output channel (S9) — ▶ starts, ▶ again pauses
+  (⏸ shown), again resumes; switching clips or starting a recording stops the
+  current audio. Click-decision logic unit-tested; no overlapping playback.
 - Mic capture + playback: verified — ALSA headers installed, `audio` default;
   cpal 0.18 / rodio 0.23 API fixes applied, app launches with the default mic
   detected. Interactive record/clone test pending a real reading.

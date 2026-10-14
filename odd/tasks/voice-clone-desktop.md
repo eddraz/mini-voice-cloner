@@ -21,6 +21,8 @@ S7. User: "puedes en la GPU agregar todos los procesos que sean posible para maq
 
 S8. User: "en lugar de whisper podemos usar https://huggingface.co/Cactus-Compute/whistle" — reference transcription defaults to whistle (needle engine, Apache 2.0, 16.9 MB, Spanish supported, ~4 s per 30 s clip on CPU); `KITTEN_TRANSCRIBER=whisper` restores kittenml's internal Whisper large-v3; a `reference_text` in the request always wins regardless of backend.
 
+S9. User: "deberia poder pausar la reproduccion no que se duplique el audio" — playback is a single persistent output channel: clicking ▶ starts the clip, clicking again pauses it, again resumes it; playing another clip stops the current one; starting a recording stops playback. No overlapping audio, ever.
+
 Environment constraints: Debian 13 (trixie), Wayland, CPU-only (8 cores, ~6 GB free RAM), ffmpeg present, no passwordless sudo. `libasound2-dev` is required for cpal (capture + playback).
 
 ## Tasks
@@ -44,6 +46,8 @@ Environment constraints: Debian 13 (trixie), Wayland, CPU-only (8 cores, ~6 GB f
 - T17 (S7): launch smoke showing "model ready (cpu)" on this machine (chain proof); README GPU section; Log L16. Route: inline.
 - T18 (S8): cactus-needle dependency + `transcribe_reference` dispatch (test-first): request reference_text wins; whistle path (soxr 16 kHz resample + needle); whisper path delegates to kittenml. Route: inline. Commit: feat(sidecar).
 - T19 (S8): E2E generate through the whistle path with the user's real reference; README transcription section; Log L18. Route: inline.
+- T20 (S9): `next_action` click-decision function (test-first) + `PlaybackController` (persistent sink, single Player, pause/resume/stop, poll_finished); replace the blocking per-click `play()`. Route: inline. Commit: fix(audio).
+- T21 (S9): UI wiring — ▶/⏸ per source (reference/result), flags refreshed after every action and on natural finish; recording stops playback; launch smoke + Log L19. Route: inline. Commit: feat(app)+docs.
 
 ## Log
 
@@ -65,3 +69,4 @@ L15. User: "puedes en la GPU agregar todos los procesos que sean posible para ma
 L16. Verification: resolve_device RED (ImportError) → DEVICE TESTS OK (auto follows CUDA, explicit passes through, invalid rejected); Rust ready_event_reports_device RED (todo panic) → cargo test 13/13; real sidecar ready event: {"device":"cpu","cuda":false,"vram_gb":null} on this machine.
 L17. User: "en lugar de whisper podemos usar https://huggingface.co/Cactus-Compute/whistle" → S8, T18-T19. Probe on the user's real audio (audio-24k.wav): Apache 2.0; needle imports on Linux x86_64; whistle transcribes coherent Spanish at 3.3-4.6 s per 30 s clip (13.9 s first call incl. engine load) vs ~300 s for whisper-large-v3 on this CPU; proper nouns mangled but text usable. Also on record: current Whisper path forces language="en" on Spanish audio.
 L18. Verification: transcribe_reference RED (ImportError) → TRANSCRIBER TESTS OK (manual wins, whistle dispatches, whisper delegates, unknown rejected) + DEVICE/REFERENCE regressions OK. Headless E2E through the whistle path: E2E OK — transcript_backend=whistle, reference_used_s=30.0 of 1048.4, 5.8 s audio at 24 kHz, elapsed 169 s vs 386 s on the whisper path (2.3× faster, cold start). README transcription section added; KITTEN_TRANSCRIBER=whisper reverts.
+L19. User (screenshot + report): "deberia poder pausar la reproduccion no que se duplique el audio" — each ▶ click spawned an independent output sink, so repeated clicks overlapped audio with no pause. → S9, T20-T21.
