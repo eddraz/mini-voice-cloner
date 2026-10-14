@@ -72,9 +72,10 @@ def resolve_device(setting, cuda_available):
     raise ValueError(f"invalid KITTEN_DEVICE {setting!r}: use auto, cuda or cpu")
 
 
-def _whistle_transcribe(wav_path):
+def _whistle_transcribe(wav_path, language=None):
     """Transcribe a WAV with whistle (needle engine). Needle runs at 16 kHz
-    mono, so the clip is resampled first (soxr ships with kittenml)."""
+    mono, so the clip is resampled first (soxr ships with kittenml). When
+    `language` is None the engine detects the language."""
     import soundfile as sf
     import soxr
 
@@ -88,7 +89,8 @@ def _whistle_transcribe(wav_path):
     try:
         import needle
 
-        return str(needle.transcribe(tmp.name)["text"]).strip()
+        options = {"language": language} if language else {}
+        return str(needle.transcribe(tmp.name, **options)["text"]).strip()
     finally:
         try:
             os.unlink(tmp.name)
@@ -96,17 +98,19 @@ def _whistle_transcribe(wav_path):
             pass
 
 
-def transcribe_reference(reference_text, wav_path, backend, transcriber=None):
-    """Decide the reference transcript (S8).
+def transcribe_reference(reference_text, wav_path, backend, transcriber=None,
+                         language=None):
+    """Decide the reference transcript (S8, S10).
 
     A caller-provided reference_text always wins. KITTEN_TRANSCRIBER=whistle
-    transcribes with needle; =whisper returns None so kittenml's internal
-    Whisper large-v3 handles it. Unknown backends are rejected.
+    transcribes with needle (`language` forwarded; None = detect); =whisper
+    returns None so kittenml's internal Whisper large-v3 handles it. Unknown
+    backends are rejected.
     """
     if reference_text:
         return reference_text.strip(), "manual"
     if backend == "whistle":
-        return (transcriber or _whistle_transcribe)(wav_path), "whistle"
+        return (transcriber or _whistle_transcribe)(wav_path, language), "whistle"
     if backend == "whisper":
         return None, "whisper"
     raise ValueError(
@@ -156,6 +160,12 @@ def handle(req):
             out = req["out"]
             reference = req.get("reference")
             reference_text = req.get("reference_text")
+            transcribe_language = req.get("transcribe_language")
+            language = (
+                None
+                if transcribe_language in (None, "", "auto")
+                else transcribe_language
+            )
             voice = req.get("voice", "Bruno")
             backend = os.environ.get("KITTEN_TRANSCRIBER", "whistle").strip().lower()
             start = time.time()
@@ -169,7 +179,7 @@ def handle(req):
                     if ref_path != reference:
                         trimmed_temp = ref_path
                     transcript, transcript_backend = transcribe_reference(
-                        reference_text, ref_path, backend)
+                        reference_text, ref_path, backend, language=language)
                     if transcript:
                         audio = model.generate(
                             text, reference=ref_path, reference_text=transcript)
@@ -189,6 +199,7 @@ def handle(req):
                     "reference_used_s": round(ref_used_s, 1) if ref_used_s else None,
                     "reference_total_s": round(ref_total_s, 1) if ref_total_s else None,
                     "transcript_backend": transcript_backend,
+                    "transcribe_language": language,
                 })
             finally:
                 if trimmed_temp:

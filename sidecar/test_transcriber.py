@@ -12,8 +12,8 @@ def boom(_path):
     raise AssertionError("must not transcribe")
 
 
-def fake_whistle(_path):
-    return "texto de prueba"
+def fake_whistle(_path, language=None):
+    return f"texto de prueba ({language})"
 
 
 def main():
@@ -23,7 +23,22 @@ def main():
 
     text, used = transcribe_reference(
         None, "/x.wav", "whistle", transcriber=fake_whistle)
+    assert (text, used) == ("texto de prueba (None)", "whistle"), (text, used)
+
+    # S10: the UI-selected language reaches the whistle transcriber.
+    seen = {}
+
+    def capturing_whistle(_path, language=None):
+        seen["language"] = language
+        return "texto de prueba"
+
+    text, used = transcribe_reference(
+        None, "/x.wav", "whistle", transcriber=capturing_whistle, language="es")
     assert (text, used) == ("texto de prueba", "whistle"), (text, used)
+    assert seen["language"] == "es", seen
+
+    transcribe_reference(None, "/x.wav", "whistle", transcriber=capturing_whistle)
+    assert seen["language"] is None, seen
 
     text, used = transcribe_reference(
         None, "/x.wav", "whisper", transcriber=boom)
