@@ -9,7 +9,7 @@ pub mod playback;
 #[cfg(feature = "audio")]
 pub use capture::Recorder;
 #[cfg(feature = "audio")]
-pub use playback::play;
+pub use playback::PlaybackController;
 
 #[cfg(not(feature = "audio"))]
 pub mod noop {
@@ -38,12 +38,35 @@ pub mod noop {
         }
     }
 
-    pub fn play(_path: &Path) -> Result<()> {
-        bail!(
-            "built without the `audio` feature: install libasound2-dev and rebuild with --features audio"
-        )
+    pub struct PlaybackController;
+
+    impl PlaybackController {
+        pub fn new() -> Self {
+            Self
+        }
+        pub fn handle_click(&mut self, _path: &Path) -> Result<()> {
+            bail!(
+                "built without the `audio` feature: install libasound2-dev and rebuild with --features audio"
+            )
+        }
+        pub fn stop(&mut self) {}
+        pub fn poll_finished(&mut self) -> bool {
+            false
+        }
+        pub fn now_playing_path(&self) -> Option<&Path> {
+            None
+        }
+        pub fn is_paused(&self) -> bool {
+            false
+        }
+    }
+
+    impl Default for PlaybackController {
+        fn default() -> Self {
+            Self
+        }
     }
 }
 
 #[cfg(not(feature = "audio"))]
-pub use noop::{play, Recorder};
+pub use noop::{PlaybackController, Recorder};
