@@ -11,6 +11,8 @@ export component AppWindow inherits Window {
     in property <string> reference-path;
     in property <string> model-status;
     in property <bool> busy;
+    in property <bool> reference-playing;
+    in property <bool> result-playing;
     in property <string> status;
     in property <string> result-path;
     in-out property <string> text-to-speak;
@@ -75,7 +77,11 @@ export component AppWindow inherits Window {
                 vertical-alignment: center;
                 color: #9a9aa2;
             }
-            Button { text: "▶"; enabled: root.reference-path != ""; clicked => root.play-reference(); }
+            Button {
+                text: root.reference-playing ? "⏸" : "▶";
+                enabled: root.reference-path != "";
+                clicked => root.play-reference();
+            }
         }
 
         LineEdit {
@@ -91,7 +97,11 @@ export component AppWindow inherits Window {
                 enabled: !root.busy && !root.recording && root.reference-path != "" && root.text-to-speak != "";
                 clicked => root.generate();
             }
-            Button { text: "▶ Result"; enabled: root.result-path != ""; clicked => root.play-result(); }
+            Button {
+                text: root.result-playing ? "⏸" : "▶ Result";
+                enabled: root.result-path != "";
+                clicked => root.play-result();
+            }
         }
 
         Text {

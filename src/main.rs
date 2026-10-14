@@ -31,6 +31,7 @@ entonces voy a cortar la grabación. Gracias por escucharme.";
 
 struct Shared {
     recorder: audio::Recorder,
+    player: audio::PlaybackController,
     started_at: Option<Instant>,
 }
 
@@ -58,6 +59,7 @@ fn stop_recording_now(shared: &Arc<Mutex<Shared>>, weak: &Weak<AppWindow>, dir: 
     let _ = weak.upgrade_in_event_loop(move |app| {
         app.set_recording(false);
         app.set_elapsed("".into());
+        app.set_reference_playing(false);
         match result {
             Ok(rate) => {
                 app.set_reference_path(out.display().to_string().into());
@@ -66,6 +68,17 @@ fn stop_recording_now(shared: &Arc<Mutex<Shared>>, weak: &Weak<AppWindow>, dir: 
             Err(e) => app.set_status(format!("record error: {e}").into()),
         }
     });
+}
+
+/// Recompute the ▶/⏸ button states from the current playback state.
+fn refresh_playback_flags(app: &AppWindow, sh: &Shared) {
+    let now = sh.player.now_playing_path().map(Path::to_path_buf);
+    let paused = sh.player.is_paused();
+    let playing = |source: slint::SharedString| {
+        now.as_deref() == Some(Path::new(source.as_str())) && !paused
+    };
+    app.set_reference_playing(playing(app.get_reference_path()));
+    app.set_result_playing(playing(app.get_result_path()));
 }
 
 #[cfg(test)]
@@ -93,6 +106,7 @@ fn main() -> anyhow::Result<()> {
     let sidecar = Arc::new(tts::SidecarHandle::spawn_for_project(Path::new("sidecar"))?);
     let shared = Arc::new(Mutex::new(Shared {
         recorder: audio::Recorder::new()?,
+        player: audio::PlaybackController::new(),
         started_at: None,
     }));
 
@@ -106,19 +120,25 @@ fn main() -> anyhow::Result<()> {
         let dir = recordings_dir.clone();
         timer.start(slint::TimerMode::Repeated, Duration::from_millis(250), move || {
             let Some(app) = weak.upgrade() else { return };
-            let hit_cap = {
-                let sh = shared.lock().unwrap();
-                match sh.started_at {
+            let (hit_cap, finished) = {
+                let mut sh = shared.lock().unwrap();
+                let finished = sh.player.poll_finished();
+                let hit_cap = match sh.started_at {
                     Some(t0) => {
                         let elapsed = t0.elapsed().as_secs();
                         app.set_elapsed(format_elapsed(elapsed).into());
                         elapsed >= MAX_RECORDING_SECS
                     }
                     None => false,
-                }
+                };
+                (hit_cap, finished)
             };
             if hit_cap {
                 stop_recording_now(&shared, &weak, &dir);
+            }
+            if finished {
+                let sh = shared.lock().unwrap();
+                refresh_playback_flags(&app, &sh);
             }
             for ev in sidecar.poll_events() {
                 match ev {
@@ -153,10 +173,12 @@ fn main() -> anyhow::Result<()> {
             let mut sh = shared.lock().unwrap();
             match sh.recorder.start() {
                 Ok(()) => {
+                    sh.player.stop();
                     sh.started_at = Some(Instant::now());
                     if let Some(app) = weak.upgrade() {
                         app.set_recording(true);
                         app.set_status("".into());
+                        refresh_playback_flags(&app, &sh);
                     }
                 }
                 Err(e) => {
@@ -201,34 +223,38 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    let spawn_playback = |path: String| {
-        std::thread::spawn(move || {
-            if let Err(e) = audio::play(Path::new(&path)) {
-                eprintln!("playback error: {e}");
-            }
-        })
-    };
-
     app.on_play_reference({
+        let shared = Arc::clone(&shared);
         let weak = weak.clone();
         move || {
-            if let Some(app) = weak.upgrade() {
-                let path = app.get_reference_path().to_string();
-                if !path.is_empty() {
-                    spawn_playback(path);
-                }
+            let Some(app) = weak.upgrade() else { return };
+            let path = app.get_reference_path().to_string();
+            if path.is_empty() {
+                return;
+            }
+            let mut sh = shared.lock().unwrap();
+            let result = sh.player.handle_click(Path::new(&path));
+            refresh_playback_flags(&app, &sh);
+            if let Err(e) = result {
+                app.set_status(format!("play error: {e}").into());
             }
         }
     });
 
     app.on_play_result({
+        let shared = Arc::clone(&shared);
         let weak = weak.clone();
         move || {
-            if let Some(app) = weak.upgrade() {
-                let path = app.get_result_path().to_string();
-                if !path.is_empty() {
-                    spawn_playback(path);
-                }
+            let Some(app) = weak.upgrade() else { return };
+            let path = app.get_result_path().to_string();
+            if path.is_empty() {
+                return;
+            }
+            let mut sh = shared.lock().unwrap();
+            let result = sh.player.handle_click(Path::new(&path));
+            refresh_playback_flags(&app, &sh);
+            if let Err(e) = result {
+                app.set_status(format!("play error: {e}").into());
             }
         }
     });
