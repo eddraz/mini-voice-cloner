@@ -66,6 +66,17 @@ The crate is Windows-ready: `rfd` uses the native file dialog there and
 cpal/rodio use WASAPI (no ALSA). Not yet compiled on Windows — `ffmpeg` is
 only needed for importing compressed audio.
 
+## GPU
+
+The sidecar picks the inference device with `KITTEN_DEVICE` (default `auto`:
+CUDA when available, else CPU). On an NVIDIA machine every heavy process —
+the 1.7 B speech LM, the S3 codec/vocoder, the speaker encoder and Whisper —
+runs on CUDA automatically (kittenml propagates one device to all of them),
+and the header shows `model ready (cuda:0)` plus VRAM in the ready event.
+Force a value with `KITTEN_DEVICE=cuda` or `KITTEN_DEVICE=cpu`; an explicit
+cuda request on a machine without CUDA fails at model load with a clear
+error. The bundled torch is a CUDA 13 build, so no reinstall is needed.
+
 ## Status
 
 - WAV helpers, sidecar client, import: unit-tested (RED→GREEN).

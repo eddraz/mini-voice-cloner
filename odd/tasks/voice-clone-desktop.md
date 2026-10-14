@@ -17,6 +17,8 @@ S5. User: "agrega un texto de prueba para poder leer al grabar la voz" — the r
 
 S6. User: "el audio deberia poder durar 15 mins para que funcione correctamente" — recordings can last up to 15 minutes (auto-stop at 15:00; the full WAV is kept on disk). Evidence: kittenml `build_reference_prefix` embeds all reference codec tokens into the prompt with no truncation (~75 tokens/s → a 15-min clip would break generation), so only a bounded window (30 s, KittenTTS's documented maximum) is passed to the model while the full recording stays on disk.
 
+S7. User: "puedes en la GPU agregar todos los procesos que sean posible para maquinas que lo soporten?" — the sidecar must place every GPU-capable process on the GPU when the machine supports it: explicit device selection (KITTEN_DEVICE=auto|cuda|cpu, auto default = kittenml's own cuda-if-available), propagated to KittenTTS so the LM, codec, speaker encoder and Whisper transcriber all share one device, plus a ready event carrying the resolved device (and VRAM when CUDA) so the UI shows where inference actually runs.
+
 Environment constraints: Debian 13 (trixie), Wayland, CPU-only (8 cores, ~6 GB free RAM), ffmpeg present, no passwordless sudo. `libasound2-dev` is required for cpal (capture + playback).
 
 ## Tasks
@@ -35,6 +37,9 @@ Environment constraints: Debian 13 (trixie), Wayland, CPU-only (8 cores, ~6 GB f
 - T12 (S6): 15-minute recording support: m:ss elapsed (test-first) + auto-stop cap at 15:00. Route: inline. Commit: feat(ui).
 - T13 (S6): Sidecar reference windowing: `prepare_reference` trims to 30 s before model.generate (full WAV untouched); test-first. Route: inline. Commit: feat(sidecar).
 - T14 (all): cargo test + launch smoke + docs/memory. Route: inline.
+- T15 (S7): sidecar device control: `resolve_device` (test-first) + load_model wiring (device → KittenTTS, ready event with device/cuda/vram_gb). Route: inline. Commit: feat(sidecar).
+- T16 (S7): Rust client surfaces the device: parse `device` from the ready event, `device_label()`, status shows "model ready (cuda|cpu)" — test-first via mock. Route: inline. Commit: feat(tts)+feat(app).
+- T17 (S7): launch smoke showing "model ready (cpu)" on this machine (chain proof); README GPU section; Log L16. Route: inline.
 
 ## Log
 
@@ -52,3 +57,5 @@ L11. Verification: format_elapsed RED→GREEN (cargo test 11/11 incl. TextEdit U
 L12. User-reported generate failure (screenshot): "Error opening 'recordings/audio-24k.wav': System error." Root cause: the sidecar runs with CWD sidecar/ but the client sent repo-relative paths. Fix 71aff6b: build_generate_request absolutizes reference/out (cargo test 12/12). Headless E2E with the user's real 17.5-min 24 kHz reference: E2E OK — reference_used_s=30.0 of 1048.4, 5.4 s audio generated at 24 kHz; elapsed 386 s dominated by Whisper transcription of the reference + CPU inference (kittenml caches the reference, so repeat generates in the same sidecar session skip re-transcription).
 L13. T5/T6 activation: user installed libasound2-dev 1.2.14; `audio` flipped to default feature. First compile of capture.rs/playback.rs surfaced 6 API errors — fixed against real sources: cpal 0.18 (config by value, FnMut(cpal::Error) instead of StreamError, SampleRate is a u32 alias, dasp `from_sample_` with trailing underscore) and rodio 0.23 (OutputStream/Sink removed → DeviceSinkBuilder::open_default_sink() + play(mixer, src) + Player::sleep_until_end). cargo test 12/12 with audio; launch smoke 30 s with default mic detected.
 L14. Windows portability: rfd moved to per-platform deps (unix keeps xdg-portal, windows gets the native backend). First attempt put the [target.*] section headers mid-[dependencies], which silently swallowed the deps that followed (13 compile errors) — restructured to the file end. cargo test 12/12 on Linux; Windows compile still untested.
+L15. User: "puedes en la GPU agregar todos los procesos que sean posible para maquinas que lo soporten?" → S7, T15-T17. Verified against installed kittenml: KittenTTS.__init__ propagates `device` to LM, S3Codec, SpeakerEncoder AND ReferenceTranscriber (my earlier "transcriber lacks device" was a misread of a truncated sed window) — so explicit device control + telemetry is the whole task. torch in venv is 2.14.1+cu130.
+L16. Verification: resolve_device RED (ImportError) → DEVICE TESTS OK (auto follows CUDA, explicit passes through, invalid rejected); Rust ready_event_reports_device RED (todo panic) → cargo test 13/13; real sidecar ready event: {"device":"cpu","cuda":false,"vram_gb":null} on this machine.
