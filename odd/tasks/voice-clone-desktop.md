@@ -19,6 +19,8 @@ S6. User: "el audio deberia poder durar 15 mins para que funcione correctamente"
 
 S7. User: "puedes en la GPU agregar todos los procesos que sean posible para maquinas que lo soporten?" — the sidecar must place every GPU-capable process on the GPU when the machine supports it: explicit device selection (KITTEN_DEVICE=auto|cuda|cpu, auto default = kittenml's own cuda-if-available), propagated to KittenTTS so the LM, codec, speaker encoder and Whisper transcriber all share one device, plus a ready event carrying the resolved device (and VRAM when CUDA) so the UI shows where inference actually runs.
 
+S8. User: "en lugar de whisper podemos usar https://huggingface.co/Cactus-Compute/whistle" — reference transcription defaults to whistle (needle engine, Apache 2.0, 16.9 MB, Spanish supported, ~4 s per 30 s clip on CPU); `KITTEN_TRANSCRIBER=whisper` restores kittenml's internal Whisper large-v3; a `reference_text` in the request always wins regardless of backend.
+
 Environment constraints: Debian 13 (trixie), Wayland, CPU-only (8 cores, ~6 GB free RAM), ffmpeg present, no passwordless sudo. `libasound2-dev` is required for cpal (capture + playback).
 
 ## Tasks
@@ -40,6 +42,8 @@ Environment constraints: Debian 13 (trixie), Wayland, CPU-only (8 cores, ~6 GB f
 - T15 (S7): sidecar device control: `resolve_device` (test-first) + load_model wiring (device → KittenTTS, ready event with device/cuda/vram_gb). Route: inline. Commit: feat(sidecar).
 - T16 (S7): Rust client surfaces the device: parse `device` from the ready event, `device_label()`, status shows "model ready (cuda|cpu)" — test-first via mock. Route: inline. Commit: feat(tts)+feat(app).
 - T17 (S7): launch smoke showing "model ready (cpu)" on this machine (chain proof); README GPU section; Log L16. Route: inline.
+- T18 (S8): cactus-needle dependency + `transcribe_reference` dispatch (test-first): request reference_text wins; whistle path (soxr 16 kHz resample + needle); whisper path delegates to kittenml. Route: inline. Commit: feat(sidecar).
+- T19 (S8): E2E generate through the whistle path with the user's real reference; README transcription section; Log L18. Route: inline.
 
 ## Log
 
@@ -59,3 +63,5 @@ L13. T5/T6 activation: user installed libasound2-dev 1.2.14; `audio` flipped to 
 L14. Windows portability: rfd moved to per-platform deps (unix keeps xdg-portal, windows gets the native backend). First attempt put the [target.*] section headers mid-[dependencies], which silently swallowed the deps that followed (13 compile errors) — restructured to the file end. cargo test 12/12 on Linux; Windows compile still untested.
 L15. User: "puedes en la GPU agregar todos los procesos que sean posible para maquinas que lo soporten?" → S7, T15-T17. Verified against installed kittenml: KittenTTS.__init__ propagates `device` to LM, S3Codec, SpeakerEncoder AND ReferenceTranscriber (my earlier "transcriber lacks device" was a misread of a truncated sed window) — so explicit device control + telemetry is the whole task. torch in venv is 2.14.1+cu130.
 L16. Verification: resolve_device RED (ImportError) → DEVICE TESTS OK (auto follows CUDA, explicit passes through, invalid rejected); Rust ready_event_reports_device RED (todo panic) → cargo test 13/13; real sidecar ready event: {"device":"cpu","cuda":false,"vram_gb":null} on this machine.
+L17. User: "en lugar de whisper podemos usar https://huggingface.co/Cactus-Compute/whistle" → S8, T18-T19. Probe on the user's real audio (audio-24k.wav): Apache 2.0; needle imports on Linux x86_64; whistle transcribes coherent Spanish at 3.3-4.6 s per 30 s clip (13.9 s first call incl. engine load) vs ~300 s for whisper-large-v3 on this CPU; proper nouns mangled but text usable. Also on record: current Whisper path forces language="en" on Spanish audio.
+L18. Verification: transcribe_reference RED (ImportError) → TRANSCRIBER TESTS OK (manual wins, whistle dispatches, whisper delegates, unknown rejected) + DEVICE/REFERENCE regressions OK. Headless E2E through the whistle path: E2E OK — transcript_backend=whistle, reference_used_s=30.0 of 1048.4, 5.8 s audio at 24 kHz, elapsed 169 s vs 386 s on the whisper path (2.3× faster, cold start). README transcription section added; KITTEN_TRANSCRIBER=whisper reverts.

@@ -66,6 +66,21 @@ The crate is Windows-ready: `rfd` uses the native file dialog there and
 cpal/rodio use WASAPI (no ALSA). Not yet compiled on Windows — `ffmpeg` is
 only needed for importing compressed audio.
 
+## Transcription (reference transcript)
+
+To clone, the model needs the reference transcript. `KITTEN_TRANSCRIBER`
+picks who produces it:
+
+- `whistle` (default): the 16.9 MB Cactus whistle model via the needle
+  engine — Apache 2.0, Spanish supported, ~4 s per 30 s clip on CPU
+  (first call also loads the engine). Better than the old default for
+  Spanish references, which kittenml's Whisper forced to English.
+- `whisper`: kittenml's internal Whisper large-v3 (transformers, slower on
+  CPU, best accuracy, English-forced).
+
+A `reference_text` in a generate request always wins over both — when the
+UI grows a transcript field, that path is already wired.
+
 ## GPU
 
 The sidecar picks the inference device with `KITTEN_DEVICE` (default `auto`:
