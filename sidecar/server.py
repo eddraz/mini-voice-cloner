@@ -56,13 +56,41 @@ def prepare_reference(path, max_s=MAX_REFERENCE_S):
     return tmp.name, frames / sr, total_s
 
 
+def resolve_device(setting, cuda_available):
+    """Map KITTEN_DEVICE (auto|cuda|cpu, case-insensitive) to the device
+    argument for KittenTTS.
+
+    'auto' resolves to cuda when CUDA is available, cpu otherwise. Explicit
+    values pass through: a cuda request on a machine without CUDA fails at
+    model load with a clear error, by design.
+    """
+    value = (setting or "auto").strip().lower()
+    if value == "auto":
+        return "cuda" if cuda_available else "cpu"
+    if value in ("cuda", "cpu"):
+        return value
+    raise ValueError(f"invalid KITTEN_DEVICE {setting!r}: use auto, cuda or cpu")
+
+
 def load_model():
     try:
+        import torch
         from kittenml import KittenTTS
 
         weights = os.environ.get("KITTEN_WEIGHTS", "emb4")
-        state["model"] = KittenTTS("KittenML/kitten-tts-2", weights=weights)
-        emit({"event": "ready"})
+        device = resolve_device(
+            os.environ.get("KITTEN_DEVICE"), torch.cuda.is_available())
+        state["model"] = KittenTTS(
+            "KittenML/kitten-tts-2", weights=weights, device=device)
+        vram_gb = None
+        if device == "cuda":
+            vram_gb = round(torch.cuda.memory_allocated() / 1e9, 2)
+        emit({
+            "event": "ready",
+            "device": str(getattr(state["model"], "device", device)),
+            "cuda": device == "cuda",
+            "vram_gb": vram_gb,
+        })
     except Exception as exc:  # noqa: BLE001 - surfaced to the host verbatim
         state["error"] = str(exc)
         emit({"event": "load_error", "error": str(exc)})
