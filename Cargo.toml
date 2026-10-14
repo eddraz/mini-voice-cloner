@@ -7,7 +7,6 @@ edition = "2024"
 anyhow = "1.0.104"
 cpal = { version = "0.18.2", optional = true }
 hound = "3.5.1"
-rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
 rodio = { version = "0.23.0", optional = true }
 serde = "1.0.229"
 serde_json = "1.0.154"
@@ -19,3 +18,9 @@ slint-build = "1.18.1"
 [features]
 default = ["audio"]
 audio = ["dep:cpal", "dep:rodio"]
+
+[target.'cfg(unix)'.dependencies]
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
+
+[target.'cfg(windows)'.dependencies]
+rfd = { version = "0.17.2" }

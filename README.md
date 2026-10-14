@@ -60,6 +60,12 @@ the HuggingFace cache and takes a while; later starts load from disk.
    the model (`KITTEN_REFERENCE_MAX_S` overrides the window). The full
    recording file is never modified.
 
+## Windows
+
+The crate is Windows-ready: `rfd` uses the native file dialog there and
+cpal/rodio use WASAPI (no ALSA). Not yet compiled on Windows — `ffmpeg` is
+only needed for importing compressed audio.
+
 ## Status
 
 - WAV helpers, sidecar client, import: unit-tested (RED→GREEN).
