@@ -72,6 +72,47 @@ def resolve_device(setting, cuda_available):
     raise ValueError(f"invalid KITTEN_DEVICE {setting!r}: use auto, cuda or cpu")
 
 
+def _whistle_transcribe(wav_path):
+    """Transcribe a WAV with whistle (needle engine). Needle runs at 16 kHz
+    mono, so the clip is resampled first (soxr ships with kittenml)."""
+    import soundfile as sf
+    import soxr
+
+    data, rate = sf.read(wav_path, dtype="float32", always_2d=True)
+    mono = data.mean(axis=1)
+    if rate != 16000:
+        mono = soxr.resample(mono, rate, 16000)
+    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp.close()
+    sf.write(tmp.name, mono, 16000)
+    try:
+        import needle
+
+        return str(needle.transcribe(tmp.name)["text"]).strip()
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+
+
+def transcribe_reference(reference_text, wav_path, backend, transcriber=None):
+    """Decide the reference transcript (S8).
+
+    A caller-provided reference_text always wins. KITTEN_TRANSCRIBER=whistle
+    transcribes with needle; =whisper returns None so kittenml's internal
+    Whisper large-v3 handles it. Unknown backends are rejected.
+    """
+    if reference_text:
+        return reference_text.strip(), "manual"
+    if backend == "whistle":
+        return (transcriber or _whistle_transcribe)(wav_path), "whistle"
+    if backend == "whisper":
+        return None, "whisper"
+    raise ValueError(
+        f"invalid KITTEN_TRANSCRIBER {backend!r}: use whistle or whisper")
+
+
 def load_model():
     try:
         import torch
@@ -114,17 +155,26 @@ def handle(req):
             text = req["text"]
             out = req["out"]
             reference = req.get("reference")
+            reference_text = req.get("reference_text")
             voice = req.get("voice", "Bruno")
+            backend = os.environ.get("KITTEN_TRANSCRIBER", "whistle").strip().lower()
             start = time.time()
             trimmed_temp = None
             ref_used_s = None
             ref_total_s = None
+            transcript_backend = None
             try:
                 if reference:
                     ref_path, ref_used_s, ref_total_s = prepare_reference(reference)
                     if ref_path != reference:
                         trimmed_temp = ref_path
-                    audio = model.generate(text, reference=ref_path)
+                    transcript, transcript_backend = transcribe_reference(
+                        reference_text, ref_path, backend)
+                    if transcript:
+                        audio = model.generate(
+                            text, reference=ref_path, reference_text=transcript)
+                    else:
+                        audio = model.generate(text, reference=ref_path)
                 else:
                     audio = model.generate(text, voice=voice)
                 import soundfile as sf
@@ -138,6 +188,7 @@ def handle(req):
                     "samples": int(len(audio)),
                     "reference_used_s": round(ref_used_s, 1) if ref_used_s else None,
                     "reference_total_s": round(ref_total_s, 1) if ref_total_s else None,
+                    "transcript_backend": transcript_backend,
                 })
             finally:
                 if trimmed_temp:

@@ -3,7 +3,11 @@ name = "voice-clone-sidecar"
 version = "0.1.0"
 description = "KittenTTS 2 JSON-lines sidecar for the voice clone desktop app"
 requires-python = ">=3.10"
-dependencies = ["kittenml", "soundfile"]
+dependencies = [
+    "cactus-needle>=3.2.2",
+    "kittenml",
+    "soundfile",
+]
 
 [tool.uv]
 package = false
