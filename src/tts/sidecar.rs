@@ -148,10 +148,11 @@ impl SidecarHandle {
         target: GenerateTarget,
         out: &Path,
         timeout: Duration,
+        transcribe_language: Option<&str>,
     ) -> Result<GenerateInfo> {
         self.ensure_ready(timeout)?;
         let id = self.0.next_id.fetch_add(1, Ordering::SeqCst);
-        let request = build_generate_request(id, text, &target, out);
+        let request = build_generate_request(id, text, &target, out, transcribe_language);
         let (tx, rx) = mpsc::channel();
         self.0
             .pending
@@ -255,6 +256,7 @@ fn build_generate_request(
     text: &str,
     target: &GenerateTarget,
     out: &Path,
+    transcribe_language: Option<&str>,
 ) -> serde_json::Value {
     let out_abs = std::path::absolute(out).expect("current directory is valid");
     match target {
@@ -266,6 +268,7 @@ fn build_generate_request(
                 "text": text,
                 "reference": reference_abs.display().to_string(),
                 "out": out_abs.display().to_string(),
+                "transcribe_language": transcribe_language,
             })
         }
         GenerateTarget::Voice(v) => json!({
@@ -274,6 +277,7 @@ fn build_generate_request(
             "text": text,
             "voice": v,
             "out": out_abs.display().to_string(),
+            "transcribe_language": transcribe_language,
         }),
     }
 }
@@ -397,6 +401,7 @@ mod tests {
                 GenerateTarget::Voice("Bruno".into()),
                 &out,
                 Duration::from_secs(10),
+                Some("auto"),
             )
             .unwrap();
         assert!((info.elapsed_s - 0.05).abs() < 0.5, "elapsed: {info:?}");
@@ -409,6 +414,7 @@ mod tests {
                 GenerateTarget::Reference(PathBuf::from("ref.wav")),
                 &out,
                 Duration::from_secs(10),
+                None,
             )
             .unwrap();
         assert_eq!(info2.samples, Some(1_200));
@@ -425,6 +431,7 @@ mod tests {
                 GenerateTarget::Voice("Bruno".into()),
                 &out,
                 Duration::from_secs(10),
+                None,
             )
             .unwrap_err();
         assert!(err.to_string().contains("boom"), "error was: {err:#}");
@@ -449,6 +456,7 @@ mod tests {
                 GenerateTarget::Voice("Bruno".into()),
                 &out,
                 Duration::from_millis(400),
+                None,
             )
             .unwrap_err();
         assert!(err.to_string().contains("timed out"), "error was: {err:#}");
@@ -461,6 +469,7 @@ mod tests {
             "hola",
             &GenerateTarget::Reference(PathBuf::from("recordings/ref.wav")),
             Path::new("recordings/out.wav"),
+            None,
         );
         let reference = req.get("reference").and_then(|v| v.as_str()).unwrap();
         let out = req.get("out").and_then(|v| v.as_str()).unwrap();
@@ -474,9 +483,37 @@ mod tests {
             "hola",
             &GenerateTarget::Voice("Bruno".into()),
             Path::new("recordings/out2.wav"),
+            None,
         );
         assert!(req.get("reference").is_none(), "voice target must not send reference");
         let out = req.get("out").and_then(|v| v.as_str()).unwrap();
         assert!(Path::new(out).is_absolute(), "out: {out}");
+    }
+
+    #[test]
+    fn request_includes_transcribe_language() {
+        let req = build_generate_request(
+            9,
+            "hola",
+            &GenerateTarget::Reference(PathBuf::from("r.wav")),
+            Path::new("o.wav"),
+            Some("es"),
+        );
+        assert_eq!(
+            req.get("transcribe_language").and_then(|v| v.as_str()),
+            Some("es")
+        );
+
+        let req = build_generate_request(
+            10,
+            "hola",
+            &GenerateTarget::Voice("Bruno".into()),
+            Path::new("o.wav"),
+            Some("auto"),
+        );
+        assert_eq!(
+            req.get("transcribe_language").and_then(|v| v.as_str()),
+            Some("auto")
+        );
     }
 }

@@ -1,4 +1,4 @@
-import { Button, LineEdit, TextEdit, HorizontalBox, VerticalBox } from "std-widgets.slint";
+import { Button, ComboBox, LineEdit, TextEdit, HorizontalBox, VerticalBox } from "std-widgets.slint";
 
 export component AppWindow inherits Window {
     title: "Voice Clone Lab";
@@ -13,6 +13,8 @@ export component AppWindow inherits Window {
     in property <bool> busy;
     in property <bool> reference-playing;
     in property <bool> result-playing;
+    in property <[string]> language-labels;
+    in-out property <int> language-index;
     in property <string> status;
     in property <string> result-path;
     in-out property <string> text-to-speak;
@@ -63,6 +65,21 @@ export component AppWindow inherits Window {
                 text <=> root.reading-script;
                 min-height: 110px;
                 font-size: 14px;
+            }
+        }
+
+        HorizontalBox {
+            spacing: 8px;
+            alignment: start;
+            Text {
+                text: "Reference language:";
+                vertical-alignment: center;
+                color: #9a9aa2;
+            }
+            ComboBox {
+                min-width: 170px;
+                model: root.language-labels;
+                current-index <=> root.language-index;
             }
         }
 

@@ -29,6 +29,19 @@ que no nos encontrábamos por acá.\n\n\
 Cuando termine de leer, voy a hacer una pausa de unos segundos y recién \
 entonces voy a cortar la grabación. Gracias por escucharme.";
 
+/// Reference-transcription languages: the intersection of whistle's seven
+/// languages and kitten-tts-2's twenty (Polish is whistle-only). "auto" lets
+/// whistle detect the language; the codes travel in generate requests.
+const TRANSCRIBE_LANGUAGES: [(&str, &str); 7] = [
+    ("auto", "Auto-detect"),
+    ("en", "English"),
+    ("de", "Deutsch"),
+    ("fr", "Français"),
+    ("es", "Español"),
+    ("it", "Italiano"),
+    ("nl", "Nederlands"),
+];
+
 struct Shared {
     recorder: audio::Recorder,
     player: audio::PlaybackController,
@@ -102,6 +115,13 @@ fn main() -> anyhow::Result<()> {
     let weak = app.as_weak();
     app.set_model_status("loading model…".into());
     app.set_reading_script(READING_SCRIPT.into());
+    app.set_language_labels(slint::ModelRc::new(slint::VecModel::from(
+        TRANSCRIBE_LANGUAGES
+            .iter()
+            .map(|(_, label)| slint::SharedString::from(*label))
+            .collect::<Vec<_>>(),
+    )));
+    app.set_language_index(0);
 
     let sidecar = Arc::new(tts::SidecarHandle::spawn_for_project(Path::new("sidecar"))?);
     let shared = Arc::new(Mutex::new(Shared {
@@ -270,6 +290,13 @@ fn main() -> anyhow::Result<()> {
             }
             let text = app.get_text_to_speak().to_string();
             let reference = app.get_reference_path().to_string();
+            let language_code = {
+                let index = app
+                    .get_language_index()
+                    .clamp(0, TRANSCRIBE_LANGUAGES.len() as i32 - 1)
+                    as usize;
+                TRANSCRIBE_LANGUAGES[index].0
+            };
             app.set_busy(true);
             app.set_status("waiting for model / generating…".into());
 
@@ -283,6 +310,7 @@ fn main() -> anyhow::Result<()> {
                     tts::GenerateTarget::Reference(PathBuf::from(reference)),
                     &out,
                     Duration::from_secs(600),
+                    Some(language_code),
                 );
                 let _ = weak.upgrade_in_event_loop(move |app| {
                     app.set_busy(false);
