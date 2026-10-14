@@ -81,6 +81,12 @@ picks who produces it:
 A `reference_text` in a generate request always wins over both — when the
 UI grows a transcript field, that path is already wired.
 
+The UI's **Reference language** select covers the languages both whistle
+and kitten-tts-2 support: auto-detect, English, German, French, Spanish,
+Italian, Dutch (whistle's Polish is not in kitten-tts-2's language list).
+The choice travels with each generate request; `Auto-detect` lets whistle
+detect the language.
+
 ## GPU
 
 The sidecar picks the inference device with `KITTEN_DEVICE` (default `auto`:
