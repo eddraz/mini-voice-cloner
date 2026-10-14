@@ -21,7 +21,7 @@ def emit(obj):
         print(json.dumps(obj), flush=True)
 
 
-emit({"event": "ready"})
+emit({"event": "ready", "device": "cuda:0"})
 
 for line in sys.stdin:
     line = line.strip()

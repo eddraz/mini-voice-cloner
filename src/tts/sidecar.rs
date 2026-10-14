@@ -67,6 +67,7 @@ struct Inner {
     ready_changed: Condvar,
     events: Mutex<Vec<SidecarEvent>>,
     pending: Mutex<HashMap<u64, Sender<PendingResult>>>,
+    device_label: Mutex<Option<String>>,
 }
 
 /// Handle to a running sidecar process. Cheap to clone via `Arc` at the call
@@ -95,6 +96,7 @@ impl SidecarHandle {
             ready_changed: Condvar::new(),
             events: Mutex::new(Vec::new()),
             pending: Mutex::new(HashMap::new()),
+            device_label: Mutex::new(None),
         });
         std::thread::Builder::new()
             .name("sidecar-reader".into())
@@ -119,6 +121,15 @@ impl SidecarHandle {
     pub fn ready_state(&self) -> ReadyState {
         self.0
             .ready
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Device reported by the sidecar's ready event, if any (S7 telemetry).
+    pub fn device_label(&self) -> Option<String> {
+        self.0
+            .device_label
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
@@ -270,7 +281,15 @@ fn build_generate_request(
 fn handle_message(inner: &Arc<Inner>, v: serde_json::Value) {
     if let Some(event) = v.get("event").and_then(|e| e.as_str()) {
         match event {
-            "ready" => set_ready(inner, ReadyState::Ready),
+            "ready" => {
+                set_ready(inner, ReadyState::Ready);
+                if let Some(device) = v.get("device").and_then(|d| d.as_str()) {
+                    *inner
+                        .device_label
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner()) = Some(device.to_string());
+                }
+            }
             "load_error" => {
                 let err = v
                     .get("error")
@@ -409,6 +428,14 @@ mod tests {
             )
             .unwrap_err();
         assert!(err.to_string().contains("boom"), "error was: {err:#}");
+    }
+
+    #[test]
+    fn ready_event_reports_device() {
+        let h = mock_handle(&[]);
+        wait_until_settled(&h, Duration::from_secs(10));
+        assert_eq!(h.ready_state(), ReadyState::Ready);
+        assert_eq!(h.device_label().as_deref(), Some("cuda:0"));
     }
 
     #[test]

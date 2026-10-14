@@ -133,7 +133,10 @@ fn main() -> anyhow::Result<()> {
             app.set_model_status(
                 match sidecar.ready_state() {
                     tts::ReadyState::Loading => "loading model…".to_string(),
-                    tts::ReadyState::Ready => "model ready".to_string(),
+                    tts::ReadyState::Ready => match sidecar.device_label() {
+                        Some(device) => format!("model ready ({device})"),
+                        None => "model ready".to_string(),
+                    },
                     tts::ReadyState::Failed(e) => format!("model error: {e}"),
                     tts::ReadyState::Exited => "sidecar exited".to_string(),
                 }
