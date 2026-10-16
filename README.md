@@ -32,8 +32,9 @@ tests/mock_sidecar.py   protocol mock for the client tests
 ```
 
 The sidecar protocol is documented in `src/tts/sidecar.rs`: the host sends
-`{"id":N,"cmd":"generate","text":...,"reference":...,"out":...}` lines and the
-sidecar emits a `ready` event, then id-matched `ok/error` responses.
+`{"id":N,"cmd":"generate","text":...,"reference":...,"out":...}` lines
+(plus an optional `"preset":"stable"|"expressive"`) and the sidecar emits
+a `ready` event, then id-matched `ok/error` responses.
 
 ## Build and run
 
@@ -62,9 +63,48 @@ the HuggingFace cache and takes a while; later starts load from disk.
 
 ## Windows
 
-The crate is Windows-ready: `rfd` uses the native file dialog there and
-cpal/rodio use WASAPI (no ALSA). Not yet compiled on Windows — `ffmpeg` is
-only needed for importing compressed audio.
+The crate is Windows-ready and **verified**: compiled, `cargo test` 18/18,
+sidecar smoke and a whistle-path E2E all pass on Windows 11 (Rust 1.99,
+Python 3.13 via `uv`, CPU inference). Windows specifics:
+
+- `rfd` uses the native file dialog; cpal/rodio use WASAPI (no ALSA needed).
+- Pin the sidecar Python to 3.13 (`sidecar/.python-version` is committed):
+  uv otherwise picks 3.15, for which `onnxruntime` (needle) has no wheel.
+- PyPI torch wheels for Windows are CPU-only, so inference runs on CPU
+  (`model ready (cpu)`); the CUDA notes above apply to Linux.
+- The Rust spawner sets `PYTHONUTF8=1` for the sidecar: kittenml reads its
+  voice-metadata JSON without an explicit encoding and the Windows cp1252
+  default breaks the model load (`UnicodeDecodeError` in `_load_voices`).
+- `server.py` pre-imports torch/kittenml/needle/etc. on the main thread
+  before starting the load thread: importing extension DLLs from a
+  secondary thread while the main thread blocks reading stdin deadlocks
+  inside importlib on CPython 3.13/Windows.
+- `cargo test` spawns the mock as `python3`; Windows has no such executable
+  by default — `uv sync` creates the venv, and copying
+  `sidecar/.venv/Scripts/python.exe` to `python3.exe` (with that dir on
+  PATH) satisfies it.
+- `ffmpeg` is only needed for importing compressed audio
+  (`winget install Gyan.FFmpeg`).
+
+## Expressiveness (presets + tags)
+
+Two controls make cloned speech sound less robotic:
+
+- **Style selector** — every generate request carries a decoding preset.
+  The UI defaults to `expressive` (temperature/top_p 0.9 — livelier prosody);
+  `stable` is the model's own default when the field is omitted. Long text is
+  already chunked into sentences internally by kittenml, so no manual
+  splitting is needed.
+- **Expression tags in the text** — kitten-tts-2 reads markup verbatim:
+  a leading emotion tag (`[joyful]`, `[sad]`, `[excited]`, … — 10 total),
+  inline vocal events (`<laugh>`, `<sigh>`, `<pause>`, `<gasp>`, …) and
+  `(((emphasis)))` spans around words. They work in the app's
+  *Text to speak* field as-is, and pair best with the expressive preset.
+
+Note: KittenTTS 2 has **no `speed` parameter** — that knob belongs to the
+legacy KittenTTS 1 model (`kittentts_legacy`); in KittenTTS 2 speed control
+is an unimplemented TODO in the vocoder, so pace is guided only by the
+reference clip and the tags above.
 
 ## Transcription (reference transcript)
 
