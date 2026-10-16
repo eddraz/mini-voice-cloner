@@ -46,6 +46,7 @@ for line in sys.stdin:
                     "elapsed_s": 0.05,
                     "sample_rate": 24000,
                     "samples": 1200,
+                    "preset": req.get("preset"),
                 })
         else:
             emit({"id": req.get("id"), "ok": True})

@@ -9,7 +9,8 @@ Messages (one JSON object per line):
   {"event": "load_error", "error": "..."} on startup failure.
 - {"id":N,"cmd":"status"} -> {"id":N,"ok":true,"ready":bool,"error":str|null}
 - {"id":N,"cmd":"generate","text":"...","reference":"/path.wav","out":"/out.wav"}
-    (or "voice":"Bruno" instead of "reference")
+    (or "voice":"Bruno" instead of "reference"; optional "preset":
+    "stable"|"expressive" — omitted means the model default, stable)
   -> {"id":N,"ok":true,"elapsed_s":1.23,"sample_rate":24000,"samples":N}
   or {"id":N,"ok":false,"error":"..."}
 """
@@ -167,6 +168,7 @@ def handle(req):
                 else transcribe_language
             )
             voice = req.get("voice", "Bruno")
+            preset = req.get("preset")
             backend = os.environ.get("KITTEN_TRANSCRIBER", "whistle").strip().lower()
             start = time.time()
             trimmed_temp = None
@@ -182,11 +184,12 @@ def handle(req):
                         reference_text, ref_path, backend, language=language)
                     if transcript:
                         audio = model.generate(
-                            text, reference=ref_path, reference_text=transcript)
+                            text, reference=ref_path, reference_text=transcript,
+                            preset=preset)
                     else:
-                        audio = model.generate(text, reference=ref_path)
+                        audio = model.generate(text, reference=ref_path, preset=preset)
                 else:
-                    audio = model.generate(text, voice=voice)
+                    audio = model.generate(text, voice=voice, preset=preset)
                 import soundfile as sf
 
                 sf.write(out, audio, model.sample_rate)
@@ -196,6 +199,7 @@ def handle(req):
                     "elapsed_s": round(time.time() - start, 2),
                     "sample_rate": model.sample_rate,
                     "samples": int(len(audio)),
+                    "preset": preset,
                     "reference_used_s": round(ref_used_s, 1) if ref_used_s else None,
                     "reference_total_s": round(ref_total_s, 1) if ref_total_s else None,
                     "transcript_backend": transcript_backend,
@@ -214,6 +218,18 @@ def handle(req):
 
 
 def main():
+    # Windows (CPython 3.13): importing extension DLLs (torch/numpy/
+    # onnxruntime/...) from a secondary thread while the main thread blocks
+    # reading stdin deadlocks inside importlib's create_module. Every heavy
+    # import in this process must therefore be pre-done on the main thread —
+    # including the modules kittenml and needle load lazily — so the load
+    # thread and generate path only hit the sys.modules cache.
+    import torch  # noqa: F401
+    import kittenml.kittentts2.model  # noqa: F401 — transformers/diffusers chain
+    from kittenml import KittenTTS  # noqa: F401
+    import needle  # noqa: F401 — whistle engine (onnxruntime DLLs)
+    import soundfile  # noqa: F401
+    import soxr  # noqa: F401
     threading.Thread(target=load_model, daemon=True).start()
     for line in sys.stdin:
         line = line.strip()

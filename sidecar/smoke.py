@@ -5,12 +5,13 @@ Run with: uv run python smoke.py
 """
 
 import json
+import os
 import subprocess
 import sys
 import threading
 import time
 
-TEXT = "Hola, esta es una prueba de síntesis de voz con KittenTTS."
+TEXT = "[joyful] Hola, esta es una prueba de síntesis de voz con KittenTTS. <laugh>"
 OUT = "../recordings/smoke-out.wav"
 
 
@@ -21,6 +22,9 @@ def fail(message):
 
 proc = subprocess.Popen(
     [sys.executable, "server.py"],
+    # PYTHONUTF8=1: kittenml opens its voice metadata JSON without an
+    # encoding and Windows' cp1252 default breaks the model load.
+    env={**os.environ, "PYTHONUTF8": "1"},
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
     text=True,
@@ -64,6 +68,7 @@ proc.stdin.write(json.dumps({
     "cmd": "generate",
     "text": TEXT,
     "voice": "Bruno",
+    "preset": "expressive",
     "out": OUT,
 }) + "\n")
 proc.stdin.flush()
