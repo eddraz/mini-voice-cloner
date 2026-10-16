@@ -4,7 +4,8 @@
 //! - sidecar → host: `{"event":"ready"}` once the model is loaded, or
 //!   `{"event":"load_error","error":"..."}` on startup failure.
 //! - host → sidecar: `{"id":N,"cmd":"generate","text":"...","reference":"/p.wav","out":"/o.wav"}`
-//!   (or `"voice":"Bruno"` instead of `"reference"`), and
+//!   (or `"voice":"Bruno"` instead of `"reference"`; optional
+//!   `"preset":"stable"|"expressive"`, omitted = model default), and
 //!   `{"id":N,"cmd":"status"}`.
 //! - sidecar → host: `{"id":N,"ok":true,"elapsed_s":1.2,"sample_rate":24000,"samples":123}`
 //!   or `{"id":N,"ok":false,"error":"..."}`.
@@ -77,10 +78,15 @@ pub struct SidecarHandle(Arc<Inner>);
 
 impl SidecarHandle {
     /// Spawn a sidecar `program args...` with `cwd` as working directory.
+    /// PYTHONUTF8=1 is forced for the child: kittenml reads its voice
+    /// metadata JSON without an explicit encoding, and on Windows the cp1252
+    /// default raises UnicodeDecodeError during model load (Linux is UTF-8
+    /// by default, so this is a no-op there).
     pub fn spawn(program: &str, args: &[&str], cwd: &Path) -> Result<Self> {
         let mut child = Command::new(program)
             .args(args)
             .current_dir(cwd)
+            .env("PYTHONUTF8", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -142,6 +148,8 @@ impl SidecarHandle {
 
     /// Run one generate request, waiting up to `timeout` total (including a
     /// possibly-still-loading model). Blocks the calling thread only.
+    /// `preset` selects the decoding style ("stable" or "expressive");
+    /// `None` leaves the choice to the model's configured default.
     pub fn generate(
         &self,
         text: &str,
@@ -149,10 +157,11 @@ impl SidecarHandle {
         out: &Path,
         timeout: Duration,
         transcribe_language: Option<&str>,
+        preset: Option<&str>,
     ) -> Result<GenerateInfo> {
         self.ensure_ready(timeout)?;
         let id = self.0.next_id.fetch_add(1, Ordering::SeqCst);
-        let request = build_generate_request(id, text, &target, out, transcribe_language);
+        let request = build_generate_request(id, text, &target, out, transcribe_language, preset);
         let (tx, rx) = mpsc::channel();
         self.0
             .pending
@@ -257,6 +266,7 @@ fn build_generate_request(
     target: &GenerateTarget,
     out: &Path,
     transcribe_language: Option<&str>,
+    preset: Option<&str>,
 ) -> serde_json::Value {
     let out_abs = std::path::absolute(out).expect("current directory is valid");
     match target {
@@ -269,6 +279,7 @@ fn build_generate_request(
                 "reference": reference_abs.display().to_string(),
                 "out": out_abs.display().to_string(),
                 "transcribe_language": transcribe_language,
+                "preset": preset,
             })
         }
         GenerateTarget::Voice(v) => json!({
@@ -278,6 +289,7 @@ fn build_generate_request(
             "voice": v,
             "out": out_abs.display().to_string(),
             "transcribe_language": transcribe_language,
+            "preset": preset,
         }),
     }
 }
@@ -402,6 +414,7 @@ mod tests {
                 &out,
                 Duration::from_secs(10),
                 Some("auto"),
+                Some("expressive"),
             )
             .unwrap();
         assert!((info.elapsed_s - 0.05).abs() < 0.5, "elapsed: {info:?}");
@@ -414,6 +427,7 @@ mod tests {
                 GenerateTarget::Reference(PathBuf::from("ref.wav")),
                 &out,
                 Duration::from_secs(10),
+                None,
                 None,
             )
             .unwrap();
@@ -431,6 +445,7 @@ mod tests {
                 GenerateTarget::Voice("Bruno".into()),
                 &out,
                 Duration::from_secs(10),
+                None,
                 None,
             )
             .unwrap_err();
@@ -457,6 +472,7 @@ mod tests {
                 &out,
                 Duration::from_millis(400),
                 None,
+                None,
             )
             .unwrap_err();
         assert!(err.to_string().contains("timed out"), "error was: {err:#}");
@@ -470,19 +486,23 @@ mod tests {
             &GenerateTarget::Reference(PathBuf::from("recordings/ref.wav")),
             Path::new("recordings/out.wav"),
             None,
+            None,
         );
         let reference = req.get("reference").and_then(|v| v.as_str()).unwrap();
         let out = req.get("out").and_then(|v| v.as_str()).unwrap();
         assert!(Path::new(reference).is_absolute(), "reference: {reference}");
         assert!(Path::new(out).is_absolute(), "out: {out}");
-        assert!(reference.ends_with("recordings/ref.wav"), "reference: {reference}");
-        assert!(out.ends_with("recordings/out.wav"), "out: {out}");
+        // Path::ends_with compares components, so it holds on Windows (\)
+        // and Unix (/) alike — a bare str::ends_with would fail on Windows.
+        assert!(Path::new(reference).ends_with("recordings/ref.wav"), "reference: {reference}");
+        assert!(Path::new(out).ends_with("recordings/out.wav"), "out: {out}");
 
         let req = build_generate_request(
             8,
             "hola",
             &GenerateTarget::Voice("Bruno".into()),
             Path::new("recordings/out2.wav"),
+            None,
             None,
         );
         assert!(req.get("reference").is_none(), "voice target must not send reference");
@@ -498,6 +518,7 @@ mod tests {
             &GenerateTarget::Reference(PathBuf::from("r.wav")),
             Path::new("o.wav"),
             Some("es"),
+            None,
         );
         assert_eq!(
             req.get("transcribe_language").and_then(|v| v.as_str()),
@@ -510,10 +531,39 @@ mod tests {
             &GenerateTarget::Voice("Bruno".into()),
             Path::new("o.wav"),
             Some("auto"),
+            None,
         );
         assert_eq!(
             req.get("transcribe_language").and_then(|v| v.as_str()),
             Some("auto")
         );
+    }
+
+    #[test]
+    fn request_includes_preset() {
+        let req = build_generate_request(
+            11,
+            "hola",
+            &GenerateTarget::Reference(PathBuf::from("r.wav")),
+            Path::new("o.wav"),
+            None,
+            Some("expressive"),
+        );
+        assert_eq!(
+            req.get("preset").and_then(|v| v.as_str()),
+            Some("expressive")
+        );
+
+        // Omitting the preset must serialize to null (sidecar reads that as
+        // "use the model default"), not "" or "stable".
+        let req = build_generate_request(
+            12,
+            "hola",
+            &GenerateTarget::Voice("Bruno".into()),
+            Path::new("o.wav"),
+            None,
+            None,
+        );
+        assert!(req.get("preset").and_then(|v| v.as_str()).is_none());
     }
 }

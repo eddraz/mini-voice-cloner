@@ -42,6 +42,15 @@ const TRANSCRIBE_LANGUAGES: [(&str, &str); 7] = [
     ("nl", "Nederlands"),
 ];
 
+/// Decoding presets offered by kitten-tts-2 (config decode_presets).
+/// "expressive" is the default here: it trades a little stability for a
+/// livelier prosody, which is what this app is after (the model's own
+/// default is "stable").
+const GENERATE_PRESETS: [(&str, &str); 2] = [
+    ("expressive", "Expressive"),
+    ("stable", "Stable"),
+];
+
 struct Shared {
     recorder: audio::Recorder,
     player: audio::PlaybackController,
@@ -122,6 +131,13 @@ fn main() -> anyhow::Result<()> {
             .collect::<Vec<_>>(),
     )));
     app.set_language_index(0);
+    app.set_preset_labels(slint::ModelRc::new(slint::VecModel::from(
+        GENERATE_PRESETS
+            .iter()
+            .map(|(_, label)| slint::SharedString::from(*label))
+            .collect::<Vec<_>>(),
+    )));
+    app.set_preset_index(0);
 
     let sidecar = Arc::new(tts::SidecarHandle::spawn_for_project(Path::new("sidecar"))?);
     let shared = Arc::new(Mutex::new(Shared {
@@ -297,6 +313,12 @@ fn main() -> anyhow::Result<()> {
                     as usize;
                 TRANSCRIBE_LANGUAGES[index].0
             };
+            let preset_code = {
+                let index = app
+                    .get_preset_index()
+                    .clamp(0, GENERATE_PRESETS.len() as i32 - 1) as usize;
+                GENERATE_PRESETS[index].0
+            };
             app.set_busy(true);
             app.set_status("waiting for model / generating…".into());
 
@@ -311,6 +333,7 @@ fn main() -> anyhow::Result<()> {
                     &out,
                     Duration::from_secs(600),
                     Some(language_code),
+                    Some(preset_code),
                 );
                 let _ = weak.upgrade_in_event_loop(move |app| {
                     app.set_busy(false);

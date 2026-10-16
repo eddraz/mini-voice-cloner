@@ -15,6 +15,8 @@ export component AppWindow inherits Window {
     in property <bool> result-playing;
     in property <[string]> language-labels;
     in-out property <int> language-index;
+    in property <[string]> preset-labels;
+    in-out property <int> preset-index;
     in property <string> status;
     in property <string> result-path;
     in-out property <string> text-to-speak;
@@ -81,6 +83,16 @@ export component AppWindow inherits Window {
                 model: root.language-labels;
                 current-index <=> root.language-index;
             }
+            Text {
+                text: "Style:";
+                vertical-alignment: center;
+                color: #9a9aa2;
+            }
+            ComboBox {
+                min-width: 150px;
+                model: root.preset-labels;
+                current-index <=> root.preset-index;
+            }
         }
 
         HorizontalBox {
@@ -103,7 +115,7 @@ export component AppWindow inherits Window {
 
         LineEdit {
             text <=> root.text-to-speak;
-            placeholder-text: "Text to speak with the cloned voice…";
+            placeholder-text: "Text to speak — expression tags work: [joyful] <laugh> (((énfasis))";
         }
 
         HorizontalBox {
