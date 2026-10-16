@@ -29,6 +29,7 @@ def fail(message):
 
 proc = subprocess.Popen(
     [sys.executable, "server.py"],
+    env={**os.environ, "PYTHONUTF8": "1"},  # Windows: kittenml reads UTF-8 JSON
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
     text=True,
